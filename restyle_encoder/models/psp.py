@@ -5,7 +5,9 @@ import math
 import torch
 from torch import nn
 
-from models.stylegan2.model import Generator
+# from models.stylegan2.model import Generator
+from models.gansformer.training.networks import Generator
+from models.gansformer.loader import load_network
 from configs.paths_config import model_paths
 from models.encoders import fpn_encoders, restyle_psp_encoders
 from utils.model_utils import RESNET_MAPPING
@@ -19,7 +21,7 @@ class pSp(nn.Module):
         self.n_styles = int(math.log(self.opts.output_size, 2)) * 2 - 2
         # Define architecture
         self.encoder = self.set_encoder()
-        self.decoder = Generator(self.opts.output_size, 512, 8, channel_multiplier=2)
+        self.decoder = Generator(z_dim=512, c_dim=0, w_dim=512, k=17, img_resolution=1024, img_channels=3) # CHANGE
         self.face_pool = torch.nn.AdaptiveAvgPool2d((256, 256))
         # Load weights if needed
         self.load_weights()
@@ -48,9 +50,11 @@ class pSp(nn.Module):
             encoder_ckpt = self.__get_encoder_checkpoint()
             self.encoder.load_state_dict(encoder_ckpt, strict=False)
             print(f'Loading decoder weights from pretrained path: {self.opts.stylegan_weights}')
-            ckpt = torch.load(self.opts.stylegan_weights)
-            self.decoder.load_state_dict(ckpt['g_ema'], strict=True)
-            self.__load_latent_avg(ckpt, repeat=self.n_styles)
+            self.decoder = load_network(self.opts.stylegan_weights, eval = True)["G"]
+            # ckpt = torch.load(self.opts.stylegan_weights)
+            # self.decoder.load_state_dict(ckpt['g_ema'], strict=True)
+            # self.__load_latent_avg(ckpt, repeat=self.n_styles)
+            self.latent_avg = None
 
     def forward(self, x, latent=None, resize=True, latent_mask=None, input_code=False, randomize_noise=True,
                 inject_latent=None, return_latents=False, alpha=None, average_code=False, input_is_full=False):
@@ -64,6 +68,7 @@ class pSp(nn.Module):
                 codes = codes + latent
             else:
                 # first iteration is with respect to the avg latent code
+                print(codes.size(), self.latent_avg.size(), self.latent_avg.repeat(codes.shape[0], 1, 1).size())
                 codes = codes + self.latent_avg.repeat(codes.shape[0], 1, 1)
 
         if latent_mask is not None:
@@ -81,11 +86,20 @@ class pSp(nn.Module):
         else:
             input_is_latent = (not input_code) or (input_is_full)
 
-        images, result_latent = self.decoder([codes],
-                                             input_is_latent=input_is_latent,
-                                             randomize_noise=randomize_noise,
-                                             return_latents=return_latents)
-
+        if input_is_latent:
+            out = self.decoder(ws=codes,
+                                    noise_mode = 'random' if randomize_noise else 'const',
+                                    return_ws=return_latents)
+        else:
+            out = self.decoder(z=codes,
+                                    noise_mode = 'random' if randomize_noise else 'const',
+                                    return_ws=return_latents)
+        if return_latents:
+            images, result_latent = out
+        else:
+            images = out[0]
+            result_latent = None
+        
         if resize:
             images = self.face_pool(images)
 

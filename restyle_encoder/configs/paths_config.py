@@ -1,6 +1,8 @@
+import os.path
+
 dataset_paths = {
-	'ffhq': '',
-	'celeba_test': '',
+	'ffhq': os.path.expanduser('~/ec523_project/restyle_encoder/datasets/ffhq/'),
+	'celeba_test': os.path.expanduser('~/ec523_project/restyle_encoder/datasets/CelebA-HQ/'),
 
 	'cars_train': '',
 	'cars_test': '',
