@@ -1332,15 +1332,7 @@ class Generator(torch.nn.Module):
         latent_in = torch.randn(
             n_latent, self.k, self.z_dim, device=device
         )
-        imgs = self.forward(latent_in)[0]
-        print(imgs.size())     # Generate an image
-        imgs = imgs.mean(0, keepdim=True).cpu().numpy()
-
-        os.makedirs("ffhq_images", exist_ok = True)
-        pattern = "{}/sample.png".format("ffhq_images")             # Output images pattern
-        img = misc.crop_max_rectangle(misc.to_pil(imgs[0]), 1.0).save(pattern)   # Save the image
-        mask = random_dp_binary([latent_in.shape[0], self.k - 1], 0.0, False, latent_in.device)
-        latent = self.mapping(z=latent_in, c=0, mask=mask).mean(0, keepdim=True)
+        latent = self.forward(z=latent_in, return_ws=True, return_img=False)[0].mean(0, keepdim=True)
         return latent
 
 ############################################ Discriminator ############################################

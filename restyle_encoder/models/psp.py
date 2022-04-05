@@ -50,7 +50,7 @@ class pSp(nn.Module):
             encoder_ckpt = self.__get_encoder_checkpoint()
             self.encoder.load_state_dict(encoder_ckpt, strict=False)
             print(f'Loading decoder weights from pretrained path: {self.opts.stylegan_weights}')
-            self.decoder = load_network(self.opts.stylegan_weights, eval = True)["G"]
+            self.decoder = load_network(self.opts.stylegan_weights, eval = True)["Gs"]
             # ckpt = torch.load(self.opts.stylegan_weights)
             # self.decoder.load_state_dict(ckpt['g_ema'], strict=True)
             # self.__load_latent_avg(ckpt, repeat=self.n_styles)
