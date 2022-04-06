@@ -18,10 +18,11 @@ class pSp(nn.Module):
     def __init__(self, opts):
         super(pSp, self).__init__()
         self.set_opts(opts)
-        self.n_styles = int(math.log(self.opts.output_size, 2)) * 2 - 2
+        self.n_styles = int(math.log(self.opts.output_size, 2)) * 2 - 1
+        self.latent_dim = 544
         # Define architecture
         self.encoder = self.set_encoder()
-        self.decoder = Generator(z_dim=512, c_dim=0, w_dim=512, k=17, img_resolution=1024, img_channels=3) # CHANGE
+        self.decoder = Generator(z_dim=512, c_dim=0, w_dim=512, k=17, img_resolution=1024, img_channels=3)
         self.face_pool = torch.nn.AdaptiveAvgPool2d((256, 256))
         # Load weights if needed
         self.load_weights()
@@ -43,12 +44,13 @@ class pSp(nn.Module):
         if self.opts.checkpoint_path is not None:
             print(f'Loading ReStyle pSp from checkpoint: {self.opts.checkpoint_path}')
             ckpt = torch.load(self.opts.checkpoint_path, map_location='cpu')
-            self.encoder.load_state_dict(self.__get_keys(ckpt, 'encoder'), strict=False)
-            self.decoder.load_state_dict(self.__get_keys(ckpt, 'decoder'), strict=True)
+            # self.encoder.load_state_dict(self.__get_keys(ckpt, 'encoder'), strict=False)
+            # self.decoder.load_state_dict(self.__get_keys(ckpt, 'decoder'), strict=True)
+            self.decoder = load_network(self.opts.stylegan_weights, eval = True)["Gs"]
             self.__load_latent_avg(ckpt)
         else:
             encoder_ckpt = self.__get_encoder_checkpoint()
-            self.encoder.load_state_dict(encoder_ckpt, strict=False)
+            # self.encoder.load_state_dict(encoder_ckpt, strict=False)
             print(f'Loading decoder weights from pretrained path: {self.opts.stylegan_weights}')
             self.decoder = load_network(self.opts.stylegan_weights, eval = True)["Gs"]
             # ckpt = torch.load(self.opts.stylegan_weights)
@@ -62,14 +64,16 @@ class pSp(nn.Module):
             codes = x
         else:
             codes = self.encoder(x)
+            codes = codes.reshape(codes.shape[0], codes.shape[1], self.decoder.k, -1)
+            codes = torch.transpose(codes, 1, 2)
+            # codes = codes.reshape(-1, )
             # residual step
             if x.shape[1] == 6 and latent is not None:
                 # learn error with respect to previous iteration
                 codes = codes + latent
             else:
                 # first iteration is with respect to the avg latent code
-                print(codes.size(), self.latent_avg.size(), self.latent_avg.repeat(codes.shape[0], 1, 1).size())
-                codes = codes + self.latent_avg.repeat(codes.shape[0], 1, 1)
+                codes = codes + self.latent_avg.unsqueeze(0).repeat(codes.shape[0], 1, 1, 1)
 
         if latent_mask is not None:
             for i in latent_mask:

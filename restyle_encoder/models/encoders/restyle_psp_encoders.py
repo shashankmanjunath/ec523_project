@@ -3,7 +3,7 @@ from torch import nn
 from torch.nn import Conv2d, BatchNorm2d, PReLU, Sequential, Module
 from torchvision.models.resnet import resnet34
 
-from models.encoders.helpers import get_blocks, bottleneck_IR, bottleneck_IR_SE
+from models.encoders.helpers import get_block, get_blocks, bottleneck_IR, bottleneck_IR_SE
 from models.encoders.map2style import GradualStyleBlock
 
 
@@ -34,15 +34,20 @@ class BackboneEncoder(Module):
                                            bottleneck.stride))
         self.body = Sequential(*modules)
 
+        # self.map = unit_module(512, 544, 1)
+        self.map = Sequential(*[unit_module(bottleneck.in_channel, bottleneck.depth, bottleneck.stride) 
+                                    for bottleneck in get_block(in_channel=512, depth=544, num_units=3)])
+
         self.styles = nn.ModuleList()
         self.style_count = n_styles
         for i in range(self.style_count):
-            style = GradualStyleBlock(512, 512, 16)
+            style = GradualStyleBlock(544, 544, 16)
             self.styles.append(style)
 
     def forward(self, x):
         x = self.input_layer(x)
         x = self.body(x)
+        x = self.map(x)
         latents = []
         for j in range(self.style_count):
             latents.append(self.styles[j](x))
