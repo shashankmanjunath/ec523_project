@@ -1,2 +1,5 @@
 datasets/ffhq/
 datasets/CelebA-HQ/
+pretrained_models/
+experiment/
+__pycache__/
