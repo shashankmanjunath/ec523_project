@@ -4,7 +4,7 @@ from torch import nn
 from torch.nn import Conv2d, BatchNorm2d, PReLU, Sequential, Module
 from torchvision.models.resnet import resnet34
 
-from models.encoders.helpers import get_blocks, bottleneck_IR, bottleneck_IR_SE
+from models.encoders.helpers import get_block, get_blocks, bottleneck_IR, bottleneck_IR_SE
 from models.encoders.map2style import GradualStyleBlock
 
 
@@ -40,14 +40,15 @@ class GradualStyleEncoder(Module):
         self.middle_ind = 7
         for i in range(self.style_count):
             if i < self.coarse_ind:
-                style = GradualStyleBlock(512, 512, 16)
+                style = GradualStyleBlock(544, 544, 16)
             elif i < self.middle_ind:
-                style = GradualStyleBlock(512, 512, 32)
+                style = GradualStyleBlock(544, 544, 32)
             else:
-                style = GradualStyleBlock(512, 512, 64)
+                style = GradualStyleBlock(544, 544, 64)
             self.styles.append(style)
-        self.latlayer1 = nn.Conv2d(256, 512, kernel_size=1, stride=1, padding=0)
-        self.latlayer2 = nn.Conv2d(128, 512, kernel_size=1, stride=1, padding=0)
+        self.latlayer0 = nn.Conv2d(512, 544, kernel_size=1, stride=1, padding=0)
+        self.latlayer1 = nn.Conv2d(256, 544, kernel_size=1, stride=1, padding=0)
+        self.latlayer2 = nn.Conv2d(128, 544, kernel_size=1, stride=1, padding=0)
 
     def _upsample_add(self, x, y):
         _, _, H, W = y.size()
@@ -60,22 +61,23 @@ class GradualStyleEncoder(Module):
         modulelist = list(self.body._modules.values())
         for i, l in enumerate(modulelist):
             x = l(x)
-            if i == 6:
+            if i == 6: # 128
                 c1 = x
-            elif i == 20:
+            elif i == 20: # 256
                 c2 = x
-            elif i == 23:
+            elif i == 23: # 512
                 c3 = x
 
-        for j in range(self.coarse_ind):
-            latents.append(self.styles[j](c3))
+        p3 = self.latlayer0(c3)
+        for j in range(self.coarse_ind): # styles 1 to 3
+            latents.append(self.styles[j](p3))
 
-        p2 = self._upsample_add(c3, self.latlayer1(c2))
-        for j in range(self.coarse_ind, self.middle_ind):
+        p2 = self._upsample_add(p3, self.latlayer1(c2)) # (256 -> 512) + upsample(coarse)
+        for j in range(self.coarse_ind, self.middle_ind): # styles 4 to 7
             latents.append(self.styles[j](p2))
 
-        p1 = self._upsample_add(p2, self.latlayer2(c1))
-        for j in range(self.middle_ind, self.style_count):
+        p1 = self._upsample_add(p2, self.latlayer2(c1)) # (128 -> 512) + upsample(middle)
+        for j in range(self.middle_ind, self.style_count): # styles 8 to 15
             latents.append(self.styles[j](p1))
 
         out = torch.stack(latents, dim=1)

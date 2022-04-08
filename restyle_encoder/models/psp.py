@@ -22,7 +22,7 @@ class pSp(nn.Module):
         self.latent_dim = 544
         # Define architecture
         self.encoder = self.set_encoder()
-        self.decoder = Generator(z_dim=512, c_dim=0, w_dim=512, k=17, img_resolution=1024, img_channels=3)
+        self.decoder = Generator(z_dim=512, c_dim=0, w_dim=512, k=17, img_resolution=256, img_channels=3)
         self.face_pool = torch.nn.AdaptiveAvgPool2d((256, 256))
         # Load weights if needed
         self.load_weights()
@@ -50,7 +50,7 @@ class pSp(nn.Module):
             self.__load_latent_avg(ckpt)
         else:
             encoder_ckpt = self.__get_encoder_checkpoint()
-            # self.encoder.load_state_dict(encoder_ckpt, strict=False)
+            self.encoder.load_state_dict(encoder_ckpt, strict=False)
             print(f'Loading decoder weights from pretrained path: {self.opts.stylegan_weights}')
             self.decoder = load_network(self.opts.stylegan_weights, eval = True)["Gs"]
             # ckpt = torch.load(self.opts.stylegan_weights)
