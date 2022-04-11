@@ -14,7 +14,7 @@ class GradualStyleEncoder(Module):
     an ResNet IRSE-50 backbone.
     Note this class is designed to be used for the human facial domain.
     """
-    def __init__(self, num_layers, mode='ir', n_styles=18, opts=None):
+    def __init__(self, num_layers, mode='ir', n_styles=18, opts=None, dim=544):
         super(GradualStyleEncoder, self).__init__()
         assert num_layers in [50, 100, 152], 'num_layers should be 50,100, or 152'
         assert mode in ['ir', 'ir_se'], 'mode should be ir or ir_se'
@@ -40,21 +40,23 @@ class GradualStyleEncoder(Module):
         self.middle_ind = 7
         for i in range(self.style_count):
             if i < self.coarse_ind:
-                style = GradualStyleBlock(544, 544, 16)
+                style = GradualStyleBlock(dim, dim, 16, attention=True)
             elif i < self.middle_ind:
-                style = GradualStyleBlock(544, 544, 32)
+                style = GradualStyleBlock(dim, dim, 32, attention=True)
             else:
-                style = GradualStyleBlock(544, 544, 64)
+                style = GradualStyleBlock(dim, dim, 64, attention=True)
             self.styles.append(style)
-        self.latlayer0 = nn.Conv2d(512, 544, kernel_size=1, stride=1, padding=0)
-        self.latlayer1 = nn.Conv2d(256, 544, kernel_size=1, stride=1, padding=0)
-        self.latlayer2 = nn.Conv2d(128, 544, kernel_size=1, stride=1, padding=0)
+        self.latlayer0 = nn.Conv2d(512, dim, kernel_size=1, stride=1, padding=0)
+        self.latlayer1 = nn.Conv2d(256, dim, kernel_size=1, stride=1, padding=0)
+        self.latlayer2 = nn.Conv2d(128, dim, kernel_size=1, stride=1, padding=0)
 
     def _upsample_add(self, x, y):
         _, _, H, W = y.size()
         return F.interpolate(x, size=(H, W), mode='bilinear', align_corners=True) + y
 
     def forward(self, x):
+        # bu -> bottom up pathway, td -> top down pathway
+        # h -> from tensor in attention, c -> to tensor (context)
         x = self.input_layer(x)
 
         latents = []
@@ -62,26 +64,48 @@ class GradualStyleEncoder(Module):
         for i, l in enumerate(modulelist):
             x = l(x)
             if i == 6: # 128
-                c1 = x
+                bu1 = x
             elif i == 20: # 256
-                c2 = x
+                bu2 = x
             elif i == 23: # 512
-                c3 = x
+                bu3 = x
 
-        p3 = self.latlayer0(c3)
-        for j in range(self.coarse_ind): # styles 1 to 3
-            latents.append(self.styles[j](p3))
+        td3 = self.latlayer0(bu3)
+        for j in range(self.coarse_ind):
+            latents.append(self.styles[j](td3, td3))
 
-        p2 = self._upsample_add(p3, self.latlayer1(c2)) # (256 -> 512) + upsample(coarse)
-        for j in range(self.coarse_ind, self.middle_ind): # styles 4 to 7
-            latents.append(self.styles[j](p2))
+        td2 = self._upsample_add(td3, self.latlayer1(bu2))
+        for j in range(self.coarse_ind, self.middle_ind):
+            latents.append(self.styles[j](td2, td3))
 
-        p1 = self._upsample_add(p2, self.latlayer2(c1)) # (128 -> 512) + upsample(middle)
-        for j in range(self.middle_ind, self.style_count): # styles 8 to 15
-            latents.append(self.styles[j](p1))
+        td1 = self._upsample_add(td2, self.latlayer2(bu1))
+        for j in range(self.middle_ind, self.style_count):
+            latents.append(self.styles[j](td1, td3))
 
         out = torch.stack(latents, dim=1)
         return out
+
+        # # h1 and c1 are the same for first layers (self-attention), and this is used as start of top-down pathway
+        # h1 = c1 = self.latlayer0(bu3) # (512 -> 544)
+        # for j in range(self.coarse_ind): # styles 1 to 3
+        #     latents.append(self.styles[j](h1, c1))
+        # td1 = h1
+
+        # c2 = self.latlayer1(bu2) # (256 -> 544)
+        # h2 = self._upsample(td1, c2.size())
+        # print(bu2.shape, td1.shape, c2.shape, h2.shape)
+        # for j in range(self.coarse_ind, self.middle_ind): # styles 4 to 7
+        #     latents.append(self.styles[j](h2, c2))
+        # td2 = h2 + c2
+
+        # c3 = self.latlayer2(bu1) # (128 -> 544)
+        # h3 = self._upsample(td2, c3.size())
+        # for j in range(self.middle_ind, self.style_count): # styles 8 to 15
+        #     latents.append(self.styles[j](h2, c3))
+        # td3 = h3 + c3
+
+        # out = torch.stack(latents, dim=1)
+        # return out
 
 
 class ResNetGradualStyleEncoder(Module):
