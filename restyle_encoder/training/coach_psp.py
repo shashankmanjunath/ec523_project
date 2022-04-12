@@ -70,7 +70,7 @@ class Coach:
 		os.makedirs(self.log_dir, exist_ok=True)
 		# self.logger = SummaryWriter(log_dir=log_dir)
 
-		# Initialize checkpoint dir
+		# Initialize checkpoint dirs
 		self.checkpoint_dir = os.path.join(opts.exp_dir, 'checkpoints')
 		os.makedirs(self.checkpoint_dir, exist_ok=True)
 		self.best_val_loss = None
@@ -129,9 +129,9 @@ class Coach:
 			agg_loss_dict.append(cur_loss_dict)
 
 			# Logging related
-			self.parse_and_log_images(id_logs, x, y, y_hat,
-									  title='images/test/faces',
-									  subscript='{:04d}'.format(batch_idx))
+			# self.parse_and_log_images(id_logs, x, y, y_hat,
+			# 						  title='images/test/faces',
+			# 						  subscript='{:04d}'.format(batch_idx))
 
 			# For first step just do sanity test on small amount of data
 			if self.global_step == 0 and batch_idx >= 4:
@@ -255,7 +255,7 @@ class Coach:
 		if subscript:
 			path = os.path.join(self.log_dir, name, f'{subscript}_{step:04d}.jpg')
 		else:
-			path = os.path.join(self.logger.log_dir, name, f'{step:04d}.jpg')
+			path = os.path.join(self.log_dir, name, f'{step:04d}.jpg')
 		os.makedirs(os.path.dirname(path), exist_ok=True)
 		fig.savefig(path)
 		plt.close(fig)
