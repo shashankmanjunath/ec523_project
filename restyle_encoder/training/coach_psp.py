@@ -1,4 +1,5 @@
 import os
+from datetime import datetime
 import matplotlib
 import matplotlib.pyplot as plt
 
@@ -69,6 +70,9 @@ class Coach:
 		self.log_dir = os.path.join(opts.exp_dir, 'logs')
 		os.makedirs(self.log_dir, exist_ok=True)
 		# self.logger = SummaryWriter(log_dir=log_dir)
+
+		# create and add current timestamp to console output file
+		self.initConsoleOutput()
 
 		# Initialize checkpoint dirs
 		self.checkpoint_dir = os.path.join(opts.exp_dir, 'checkpoints')
@@ -224,14 +228,22 @@ class Coach:
 		loss_dict['loss'] = float(loss)
 		return loss, loss_dict, id_logs
 
+	def initConsoleOutput(self):
+		with open(self.log_dir + "/console_output.txt", 'a') as file:
+			file.write('\n')
+			timestamp = str(datetime.now())
+			file.write(timestamp)
+
 	def log_metrics(self, metrics_dict, prefix):
 		for key, value in metrics_dict.items():
 			self.logger.add_scalar(f'{prefix}/{key}', value, self.global_step)
 
 	def print_metrics(self, metrics_dict, prefix):
-		print(f'Metrics for {prefix}, step {self.global_step}')
-		for key, value in metrics_dict.items():
-			print(f'\t{key} = ', value)
+		with open(self.log_dir + "/console_output.txt", 'a') as file:
+			print_and_write(file, '')
+			print_and_write(file, f'Metrics for {prefix}, step {self.global_step}')
+			for key, value in metrics_dict.items():
+				print_and_write(file, f'\t{key} = {value}')
 
 	def parse_and_log_images(self, id_logs, x, y, y_hat, title, subscript=None, display_count=2):
 		im_data = []
@@ -269,3 +281,7 @@ class Coach:
 		if self.opts.start_from_latent_avg:
 			save_dict['latent_avg'] = self.net.latent_avg
 		return save_dict
+
+def print_and_write(f, s):
+	f.write(s+'\n')
+	print(s)
