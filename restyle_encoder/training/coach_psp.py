@@ -83,15 +83,26 @@ class Coach:
 
 	def train(self):
 		self.net.train()
+		if self.opts.use_amp:
+			scaler = torch.cuda.amp.GradScaler()
+
 		while self.global_step < self.opts.max_steps:
 			for batch_idx, batch in enumerate(self.train_dataloader):
 				self.optimizer.zero_grad()
 				x, y = batch
 				x, y = x.to(self.device).float(), y.to(self.device).float()
-				y_hat, latent = self.net.forward(x, return_latents=True)
-				loss, loss_dict, id_logs = self.calc_loss(x, y, y_hat, latent)
-				loss.backward()
-				self.optimizer.step()
+
+				with torch.cuda.amp.autocast(enabled=self.opts.use_amp):
+					y_hat, latent = self.net.forward(x, return_latents=True)
+					loss, loss_dict, id_logs = self.calc_loss(x, y, y_hat, latent)
+
+				if self.opts.use_amp:
+					scaler.scale(loss).backward()
+					scaler.step(self.optimizer)
+					scaler.update()
+				else:
+					loss.backward()
+					self.optimizer.step()
 
 				# Logging related
 				if self.global_step % self.opts.image_interval == 0 or (self.global_step < 1000 and self.global_step % 25 == 0):
@@ -119,6 +130,7 @@ class Coach:
 					break
 
 				self.global_step += 1
+			print(batch_idx)
 
 	def validate(self):
 		self.net.eval()
@@ -229,7 +241,7 @@ class Coach:
 		return loss, loss_dict, id_logs
 
 	def initConsoleOutput(self):
-		with open(self.log_dir + "/console_output.txt", 'a') as file:
+		with open(self.log_dir + "/metric_output.txt", 'a') as file:
 			file.write('\n')
 			timestamp = str(datetime.now())
 			file.write(timestamp)
@@ -239,7 +251,7 @@ class Coach:
 			self.logger.add_scalar(f'{prefix}/{key}', value, self.global_step)
 
 	def print_metrics(self, metrics_dict, prefix):
-		with open(self.log_dir + "/console_output.txt", 'a') as file:
+		with open(self.log_dir + "/metric_output.txt", 'a') as file:
 			print_and_write(file, '')
 			print_and_write(file, f'Metrics for {prefix}, step {self.global_step}')
 			for key, value in metrics_dict.items():

@@ -77,6 +77,10 @@ class TrainOptions:
         self.parser.add_argument('--n_iters_per_batch', default=5, type=int,
                                  help='Number of forward passes per batch during training')
 
+        # automatic mixed precision for faster training
+        self.parser.add_argument('--use_amp', default=False, type=bool,
+                                 help='Use Automatic Mixed Precision for training')
+
     def parse(self):
         opts = self.parser.parse_args()
         return opts

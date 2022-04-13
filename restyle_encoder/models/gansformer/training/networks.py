@@ -771,29 +771,29 @@ class TransformerLayer(torch.nn.Module):
         att_scores = queries.matmul(keys.permute(0, 1, 3, 2)) # [B, N, F, T]
         att_probs = None
 
-        for i in range(self.kmeans_iters):
-            if self.kmeans:
-                if i > 0:
-                    # Compute relative weights of different 'from' elements for each 'to' centroid
-                    to_from = compute_assignments(att_probs)
-                    # Given:
-                    # 1. Centroid assignments of 'from' elements to 'to' centroid
-                    # 2. 'from' elements (queries)
-                    # Compute the 'to' respective centroids
-                    to_centroids = to_from.matmul(from_elements)
+        with torch.cuda.amp.autocast(enabled=False):
+            for i in range(self.kmeans_iters):
+                if self.kmeans:
+                    if i > 0:
+                        # Compute relative weights of different 'from' elements for each 'to' centroid
+                        to_from = compute_assignments(att_probs)
+                        # Given:
+                        # 1. Centroid assignments of 'from' elements to 'to' centroid
+                        # 2. 'from' elements (queries)
+                        # Compute the 'to' respective centroids
+                        to_centroids = to_from.matmul(from_elements)
 
-                # Compute attention scores based on dot products between
-                # 'from' queries and the 'to' centroids.
-                att_scores = (from_elements * self.att_weight).matmul(to_centroids.permute(0, 1, 3, 2))
-
-            # Scale attention scores given head size (see BERT)
-            att_scores = att_scores / math.sqrt(float(self.size_head))
-            # (optional, not used by default)
-            # Mask attention logits using att_mask (to mask some components)
-            if att_mask is not None:
-                att_scores = logits_mask(att_scores, att_mask.unsqueeze(1))
-            # Turn attention logits to probabilities (softmax + dropout)
-            att_probs = compute_probs(att_scores, self.att_dp)
+                    # Compute attention scores based on dot products between
+                    # 'from' queries and the 'to' centroids.
+                    att_scores = (from_elements * self.att_weight).matmul(to_centroids.permute(0, 1, 3, 2))
+                # Scale attention scores given head size (see BERT)
+                att_scores = att_scores / math.sqrt(float(self.size_head))
+                # (optional, not used by default)
+                # Mask attention logits using att_mask (to mask some components)
+                if att_mask is not None:
+                    att_scores = logits_mask(att_scores, att_mask.unsqueeze(1))
+                # Turn attention logits to probabilities (softmax + dropout)
+                att_probs = compute_probs(att_scores, self.att_dp)
         # Gate attention values for the from/to elements
         att_probs = self.to_gate_attention(att_probs, to_tensor, to_pos)
         att_probs = self.from_gate_attention(att_probs, from_tensor, from_pos)
@@ -1156,11 +1156,11 @@ class SynthesisBlock(torch.nn.Module):
             y = self.skip(x)
             x, att_maps[0], att_vars = self.conv0(x, next(w_iter), att_vars, fused_modconv = fused_modconv, **layer_kwargs)
             x, att_maps[1], att_vars = self.conv1(x, next(w_iter), att_vars, fused_modconv = fused_modconv, **layer_kwargs)
-            x = y.add_(x)
+            x = y + x
         else:
             x, att_maps[0], att_vars = self.conv0(x, next(w_iter), att_vars, fused_modconv = fused_modconv, **layer_kwargs)
             x, att_maps[1], att_vars = self.conv1(x, next(w_iter), att_vars, fused_modconv = fused_modconv, **layer_kwargs)
-        
+            
         # ToRGB
         if img is not None:
             torch_misc.assert_shape(img, [None, self.img_channels, self.res // 2, self.res // 2])
