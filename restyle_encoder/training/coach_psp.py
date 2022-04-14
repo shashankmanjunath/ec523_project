@@ -154,7 +154,7 @@ class Coach:
 				return None  # Do not log, inaccurate in first batch
 
 		loss_dict = train_utils.aggregate_loss_dict(agg_loss_dict)
-		self.log_metrics(loss_dict, prefix='test')
+		# self.log_metrics(loss_dict, prefix='test')
 		self.print_metrics(loss_dict, prefix='test')
 
 		self.net.train()
@@ -245,9 +245,9 @@ class Coach:
 			timestamp = str(datetime.now())
 			file.write(timestamp)
 
-	def log_metrics(self, metrics_dict, prefix):
-		for key, value in metrics_dict.items():
-			self.logger.add_scalar(f'{prefix}/{key}', value, self.global_step)
+	# def log_metrics(self, metrics_dict, prefix):
+	# 	for key, value in metrics_dict.items():
+	# 		self.logger.add_scalar(f'{prefix}/{key}', value, self.global_step)
 
 	def print_metrics(self, metrics_dict, prefix):
 		with open(self.log_dir + "/metric_output.txt", 'a') as file:
