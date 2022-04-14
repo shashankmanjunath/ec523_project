@@ -26,8 +26,7 @@ class Coach:
 
 		self.global_step = 0
 
-		self.device = 'cuda:0'  # TODO: Allow multiple GPU? currently using CUDA_VISIBLE_DEVICES
-		self.opts.device = self.device
+		self.device = self.opts.device  # TODO: Allow multiple GPU? currently using CUDA_VISIBLE_DEVICES
 
 		# Initialize network
 		self.net = pSp(self.opts).to(self.device)

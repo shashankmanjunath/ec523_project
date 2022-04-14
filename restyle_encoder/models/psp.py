@@ -66,7 +66,6 @@ class pSp(nn.Module):
             codes = self.encoder(x)
             codes = codes.reshape(codes.shape[0], codes.shape[1], self.decoder.k, -1)
             codes = torch.transpose(codes, 1, 2)
-            # codes = codes.reshape(-1, )
             # residual step
             if x.shape[1] == 6 and latent is not None:
                 # learn error with respect to previous iteration
@@ -126,7 +125,7 @@ class pSp(nn.Module):
     def __get_encoder_checkpoint(self):
         if "ffhq" in self.opts.dataset_type:
             print('Loading encoders weights from irse50!')
-            encoder_ckpt = torch.load(model_paths['ir_se50'])
+            encoder_ckpt = torch.load(model_paths['ir_se50'], map_location='cpu')
             # Transfer the RGB input of the irse50 network to the first 3 input channels of pSp's encoder
             if self.opts.input_nc != 3:
                 shape = encoder_ckpt['input_layer.0.weight'].shape
@@ -136,7 +135,7 @@ class pSp(nn.Module):
             return encoder_ckpt
         else:
             print('Loading encoders weights from resnet34!')
-            encoder_ckpt = torch.load(model_paths['resnet34'])
+            encoder_ckpt = torch.load(model_paths['resnet34'], map_location='cpu')
             # Transfer the RGB input of the resnet34 network to the first 3 input channels of pSp's encoder
             if self.opts.input_nc != 3:
                 shape = encoder_ckpt['conv1.weight'].shape

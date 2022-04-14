@@ -18,6 +18,8 @@ class TrainOptions:
                                  help='Number of input image channels to the ReStyle encoder. Should be set to 6.')
         self.parser.add_argument('--output_size', default=1024, type=int,
                                  help='Output size of generator')
+        self.parser.add_argument('--device', default='cuda:0', type=str,
+                                 help='Device to use for training')                     
 
         # batch size and dataloader works
         self.parser.add_argument('--batch_size', default=4, type=int,
