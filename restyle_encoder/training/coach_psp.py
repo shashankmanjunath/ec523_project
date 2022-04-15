@@ -17,6 +17,7 @@ from configs import data_configs
 from datasets.images_dataset import ImagesDataset
 from criteria.lpips.lpips import LPIPS
 from models.psp import pSp
+from models.psp_attention import pSpAttention
 from training.ranger import Ranger
 
 
@@ -29,7 +30,8 @@ class Coach:
 		self.device = self.opts.device  # TODO: Allow multiple GPU? currently using CUDA_VISIBLE_DEVICES
 
 		# Initialize network
-		self.net = pSp(self.opts).to(self.device)
+		self.net = pSpAttention(self.opts) if self.opts.attention else pSp(self.opts)
+		self.net = self.net.to(self.device)
 
 		# Estimate latent_avg via dense sampling if latent_avg is not available
 		if self.net.latent_avg is None:

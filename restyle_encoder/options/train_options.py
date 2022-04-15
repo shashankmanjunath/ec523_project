@@ -12,10 +12,12 @@ class TrainOptions:
                                  help='Path to experiment output directory')
         self.parser.add_argument('--dataset_type', default='ffhq_encode', type=str,
                                  help='Type of dataset/experiment to run')
-        self.parser.add_argument('--encoder_type', default='BackboneEncoder', type=str,
+        self.parser.add_argument('--encoder_type', default='GradualStyleEncoder', type=str,
                                  help='Which encoder to use')
-        self.parser.add_argument('--input_nc', default=6, type=int,
-                                 help='Number of input image channels to the ReStyle encoder. Should be set to 6.')
+        self.parser.add_argument('--attention', default=False, action='store_true',
+                                 help='Whether to use the proposed attention model or default pSp')
+        self.parser.add_argument('--input_nc', default=3, type=int,
+                                 help='Number of input image channels to the pSp encoder. Should be set to 3.')
         self.parser.add_argument('--output_size', default=1024, type=int,
                                  help='Output size of generator')
         self.parser.add_argument('--device', default='cuda:0', type=str,
@@ -80,7 +82,7 @@ class TrainOptions:
                                  help='Number of forward passes per batch during training')
 
         # automatic mixed precision for faster training
-        self.parser.add_argument('--use_amp', default=False, type=bool,
+        self.parser.add_argument('--use_amp', default=False, action='store_true',
                                  help='Use Automatic Mixed Precision for training')
 
     def parse(self):

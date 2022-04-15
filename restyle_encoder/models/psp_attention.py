@@ -5,54 +5,44 @@ import math
 import torch
 from torch import nn
 
-from models.stylegan2.model import Generator
+from models.gansformer.training.networks import Generator
+from models.gansformer.loader import load_network
 from configs.paths_config import model_paths
-from models.encoders import fpn_encoders, restyle_psp_encoders
+from models.encoders.fpn_encoders import GradualStyleAttentionEncoder
 from utils.model_utils import RESNET_MAPPING
 
 
-class pSp(nn.Module):
+class pSpAttention(nn.Module):
 
     def __init__(self, opts):
-        super(pSp, self).__init__()
+        super(pSpAttention, self).__init__()
         self.set_opts(opts)
-        self.n_styles = int(math.log(self.opts.output_size, 2)) * 2 - 2
+        self.n_styles = int(math.log(self.opts.output_size, 2)) * 2 - 1
+        self.latent_dim = 544
         # Define architecture
         self.encoder = self.set_encoder()
-        self.decoder = Generator(self.opts.output_size, 512, 8, channel_multiplier=2)
+        self.decoder = Generator(z_dim=512, c_dim=0, w_dim=512, k=17, img_resolution=256, img_channels=3)
         self.face_pool = torch.nn.AdaptiveAvgPool2d((256, 256))
         # Load weights if needed
         self.load_weights()
 
     def set_encoder(self):
-        if self.opts.encoder_type == 'GradualStyleAttentionEncoder':
-            encoder = fpn_encoders.GradualStyleAttentionEncoder(50, 'ir_se', self.n_styles, self.opts, dim=512)
-        elif self.opts.encoder_type == 'GradualStyleEncoder':
-            encoder = fpn_encoders.GradualStyleEncoder(50, 'ir_se', self.n_styles, self.opts)
-        elif self.opts.encoder_type == 'ResNetGradualStyleEncoder':
-            encoder = fpn_encoders.ResNetGradualStyleEncoder(self.n_styles, self.opts)
-        elif self.opts.encoder_type == 'BackboneEncoder':
-            encoder = restyle_psp_encoders.BackboneEncoder(50, 'ir_se', self.n_styles, self.opts)
-        elif self.opts.encoder_type == 'ResNetBackboneEncoder':
-            encoder = restyle_psp_encoders.ResNetBackboneEncoder(self.n_styles, self.opts)
-        else:
-            raise Exception(f'{self.opts.encoder_type} is not a valid encoders')
+        # only supported encoder for now
+        encoder = GradualStyleAttentionEncoder(50, 'ir_se', self.n_styles, self.opts, attention=True)
         return encoder
 
     def load_weights(self):
         if self.opts.checkpoint_path is not None:
             print(f'Loading ReStyle pSp from checkpoint: {self.opts.checkpoint_path}')
             ckpt = torch.load(self.opts.checkpoint_path, map_location='cpu')
-            self.encoder.load_state_dict(self.__get_keys(ckpt, 'encoder'), strict=False)
-            self.decoder.load_state_dict(self.__get_keys(ckpt, 'decoder'), strict=True)
+            self.decoder = load_network(self.opts.stylegan_weights, eval = True)["Gs"]
             self.__load_latent_avg(ckpt)
         else:
             encoder_ckpt = self.__get_encoder_checkpoint()
             self.encoder.load_state_dict(encoder_ckpt, strict=False)
             print(f'Loading decoder weights from pretrained path: {self.opts.stylegan_weights}')
-            ckpt = torch.load(self.opts.stylegan_weights)
-            self.decoder.load_state_dict(ckpt['g_ema'], strict=self.opts.attention)
-            self.__load_latent_avg(ckpt, repeat=self.n_styles)
+            self.decoder = load_network(self.opts.stylegan_weights, eval = True)["Gs"]
+            self.latent_avg = None
 
     def forward(self, x, latent=None, resize=True, latent_mask=None, input_code=False, randomize_noise=True,
                 inject_latent=None, return_latents=False, alpha=None, average_code=False, input_is_full=False):
@@ -60,14 +50,15 @@ class pSp(nn.Module):
             codes = x
         else:
             codes = self.encoder(x)
-            exit()
+            codes = codes.reshape(codes.shape[0], codes.shape[1], self.decoder.k, -1)
+            codes = torch.transpose(codes, 1, 2)
             # residual step
             if x.shape[1] == 6 and latent is not None:
                 # learn error with respect to previous iteration
                 codes = codes + latent
             else:
                 # first iteration is with respect to the avg latent code
-                codes = codes + self.latent_avg.repeat(codes.shape[0], 1, 1)
+                codes = codes + self.latent_avg.unsqueeze(0).repeat(codes.shape[0], 1, 1, 1)
 
         if latent_mask is not None:
             for i in latent_mask:
@@ -84,11 +75,20 @@ class pSp(nn.Module):
         else:
             input_is_latent = (not input_code) or (input_is_full)
 
-        images, result_latent = self.decoder([codes],
-                                             input_is_latent=input_is_latent,
-                                             randomize_noise=randomize_noise,
-                                             return_latents=return_latents)
-
+        if input_is_latent:
+            out = self.decoder(ws=codes,
+                                    noise_mode = 'random' if randomize_noise else 'const',
+                                    return_ws=return_latents)
+        else:
+            out = self.decoder(z=codes,
+                                    noise_mode = 'random' if randomize_noise else 'const',
+                                    return_ws=return_latents)
+        if return_latents:
+            images, result_latent = out
+        else:
+            images = out[0]
+            result_latent = None
+        
         if resize:
             images = self.face_pool(images)
 
