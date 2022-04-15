@@ -35,6 +35,7 @@ class pSpAttention(nn.Module):
         if self.opts.checkpoint_path is not None:
             print(f'Loading ReStyle pSp from checkpoint: {self.opts.checkpoint_path}')
             ckpt = torch.load(self.opts.checkpoint_path, map_location='cpu')
+            self.encoder.load_state_dict(self.__get_keys(ckpt, 'encoder'), strict=False)
             self.decoder = load_network(self.opts.stylegan_weights, eval = True)["Gs"]
             self.__load_latent_avg(ckpt)
         else:
