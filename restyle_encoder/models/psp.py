@@ -2,10 +2,13 @@
 This file defines the core research contribution
 """
 import math
+import numpy as np
 import torch
 from torch import nn
 
-from models.stylegan2.model import Generator
+from models.stylegan.GAN import Generator as StyleGANGenerator
+from models.stylegan2.model import Generator as StyleGAN2Generator
+from models.stylegan.loader import load as load_stylegan
 from configs.paths_config import model_paths
 from models.encoders import fpn_encoders, restyle_psp_encoders
 from utils.model_utils import RESNET_MAPPING
@@ -19,15 +22,16 @@ class pSp(nn.Module):
         self.n_styles = int(math.log(self.opts.output_size, 2)) * 2 - 2
         # Define architecture
         self.encoder = self.set_encoder()
-        self.decoder = Generator(self.opts.output_size, 512, 8, channel_multiplier=2)
+        if self.opts.use_stylegan:
+            self.decoder = StyleGANGenerator(self.opts.output_size, blur_filter=[1,2,1], truncation_psi=0)
+        else:
+            self.decoder = StyleGAN2Generator(self.opts.output_size, 512, 8, channel_multiplier=2)
         self.face_pool = torch.nn.AdaptiveAvgPool2d((256, 256))
         # Load weights if needed
         self.load_weights()
 
     def set_encoder(self):
-        if self.opts.encoder_type == 'GradualStyleAttentionEncoder':
-            encoder = fpn_encoders.GradualStyleAttentionEncoder(50, 'ir_se', self.n_styles, self.opts, dim=512)
-        elif self.opts.encoder_type == 'GradualStyleEncoder':
+        if self.opts.encoder_type == 'GradualStyleEncoder':
             encoder = fpn_encoders.GradualStyleEncoder(50, 'ir_se', self.n_styles, self.opts)
         elif self.opts.encoder_type == 'ResNetGradualStyleEncoder':
             encoder = fpn_encoders.ResNetGradualStyleEncoder(self.n_styles, self.opts)
@@ -50,9 +54,9 @@ class pSp(nn.Module):
             encoder_ckpt = self.__get_encoder_checkpoint()
             self.encoder.load_state_dict(encoder_ckpt, strict=False)
             print(f'Loading decoder weights from pretrained path: {self.opts.stylegan_weights}')
-            ckpt = torch.load(self.opts.stylegan_weights)
-            self.decoder.load_state_dict(ckpt['g_ema'], strict=self.opts.attention)
-            self.__load_latent_avg(ckpt, repeat=self.n_styles)
+            decoder_ckpt = torch.load(self.opts.stylegan_weights)
+            self.decoder.load_state_dict(decoder_ckpt['g_ema'], strict=False)
+            self.__load_latent_avg(decoder_ckpt, repeat=self.n_styles)
 
     def forward(self, x, latent=None, resize=True, latent_mask=None, input_code=False, randomize_noise=True,
                 inject_latent=None, return_latents=False, alpha=None, average_code=False, input_is_full=False):
@@ -60,7 +64,6 @@ class pSp(nn.Module):
             codes = x
         else:
             codes = self.encoder(x)
-            exit()
             # residual step
             if x.shape[1] == 6 and latent is not None:
                 # learn error with respect to previous iteration
@@ -84,10 +87,17 @@ class pSp(nn.Module):
         else:
             input_is_latent = (not input_code) or (input_is_full)
 
-        images, result_latent = self.decoder([codes],
-                                             input_is_latent=input_is_latent,
-                                             randomize_noise=randomize_noise,
-                                             return_latents=return_latents)
+        if self.opts.use_stylegan:
+            images, result_latent = self.decoder(codes,
+                                                depth=int(np.log2(self.opts.output_size)) - 2,
+                                                alpha=1,
+                                                input_is_latent=input_is_latent,
+                                                return_latents=return_latents)
+        else:
+            images, result_latent = self.decoder([codes],
+                                                input_is_latent=input_is_latent,
+                                                randomize_noise=randomize_noise,
+                                                return_latents=return_latents)
 
         if resize:
             images = self.face_pool(images)

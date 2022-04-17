@@ -5,30 +5,30 @@ import math
 import torch
 from torch import nn
 
-from models.gansformer.training.networks import Generator
+from models.gansformer.training.networks import Generator as GansformerGenerator
 from models.gansformer.loader import load_network
 from configs.paths_config import model_paths
-from models.encoders.fpn_encoders import GradualStyleAttentionEncoder
+from models.encoders.fpn_encoders import GansformerStyleEncoder
 from utils.model_utils import RESNET_MAPPING
 
 
-class pSpAttention(nn.Module):
+class pSpGansformer(nn.Module):
 
     def __init__(self, opts):
-        super(pSpAttention, self).__init__()
+        super(pSpGansformer, self).__init__()
         self.set_opts(opts)
         self.n_styles = int(math.log(self.opts.output_size, 2)) * 2 - 1
         self.latent_dim = 544
         # Define architecture
         self.encoder = self.set_encoder()
-        self.decoder = Generator(z_dim=512, c_dim=0, w_dim=512, k=17, img_resolution=256, img_channels=3)
+        self.decoder = GansformerGenerator(z_dim=512, c_dim=0, w_dim=512, k=17, img_resolution=256, img_channels=3)
         self.face_pool = torch.nn.AdaptiveAvgPool2d((256, 256))
         # Load weights if needed
         self.load_weights()
 
     def set_encoder(self):
         # only supported encoder for now
-        encoder = GradualStyleAttentionEncoder(50, 'ir_se', self.n_styles, self.opts, attention=True)
+        encoder = GansformerStyleEncoder(50, 'ir_se', self.n_styles, self.opts)
         return encoder
 
     def load_weights(self):
@@ -78,11 +78,11 @@ class pSpAttention(nn.Module):
 
         if input_is_latent:
             out = self.decoder(ws=codes,
-                                    noise_mode = 'random' if randomize_noise else 'const',
+                                    noise_mode = 'const', # 'random' if randomize_noise else 'const',
                                     return_ws=return_latents)
         else:
             out = self.decoder(z=codes,
-                                    noise_mode = 'random' if randomize_noise else 'const',
+                                    noise_mode = 'const', # 'random' if randomize_noise else 'const',
                                     return_ws=return_latents)
         if return_latents:
             images, result_latent = out

@@ -14,8 +14,12 @@ class TrainOptions:
                                  help='Type of dataset/experiment to run')
         self.parser.add_argument('--encoder_type', default='GradualStyleEncoder', type=str,
                                  help='Which encoder to use')
-        self.parser.add_argument('--attention', default=False, action='store_true',
-                                 help='Whether to use the proposed attention model or default pSp')
+        self.parser.add_argument('--use_attention', default=False, action='store_true',
+                                 help='Whether to use attention in the default pSp encoder')                         
+        self.parser.add_argument('--use_gansformer', default=False, action='store_true',
+                                 help='Whether to use Gansformer or StyleGAN for the pSp decoder')
+        self.parser.add_argument('--use_stylegan', default=False, action='store_true',
+                                 help='Whether to use StyleGAN1 instead of StyleGAN2 for the pSp decoder')
         self.parser.add_argument('--input_nc', default=3, type=int,
                                  help='Number of input image channels to the pSp encoder. Should be set to 3.')
         self.parser.add_argument('--output_size', default=1024, type=int,
