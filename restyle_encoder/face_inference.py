@@ -55,7 +55,7 @@ def get_coupled_results(result_batch, transformed_image, opts):
 
 
 if __name__ == "__main__":
-    model_path = "../pretrained_models/restyle_psp_ffhq_encode.pt"
+    model_path = "../pretrained_models/psp_stylegan2_attention_ffhq_48k.pt"
 
     image_path = "notebooks/images/face_img.jpg"
     img_transforms = transforms.Compose([
