@@ -5,10 +5,10 @@ import math
 import torch
 from torch import nn
 
-from models.gansformer.training.networks import Generator as GansformerGenerator
-from models.gansformer.loader import load_network
-from configs.paths_config import model_paths
-from models.encoders.fpn_encoders import GansformerStyleEncoder
+from models.psp_models.gansformer.training.networks import Generator as GansformerGenerator
+from models.psp_models.gansformer.loader import load_network
+#  from configs.paths_config import model_paths
+from models.psp_models.encoders.fpn_encoders import GansformerStyleEncoder
 from utils.model_utils import RESNET_MAPPING
 
 

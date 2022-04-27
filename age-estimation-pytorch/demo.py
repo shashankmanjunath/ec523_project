@@ -175,7 +175,7 @@ def main():
             #  if idx > 150:
             #      break
 
-        np.save("./stylegan_face_scores.npy", np.asarray(output_arr))
+        np.save("./stylegan_ffhq_face_scores.npy", np.asarray(output_arr))
             #  if args.output_dir is not None:
             #      output_path = output_dir.joinpath(name)
             #      cv2.imwrite(str(output_path), img)
