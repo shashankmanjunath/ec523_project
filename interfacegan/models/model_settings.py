@@ -61,7 +61,7 @@ MODEL_POOL = {
     },
     'psp_gansformer_ffhq': {
         'tf_model_path': MODEL_DIR + 'None',
-        'model_path': MODEL_DIR + '/psp_gansformer_attention_attention_ffhq_500k.pt',
+        'model_path': MODEL_DIR + '/psp_gansformer_attention_ffhq_500k.pt',
         'gan_type': 'psp_gansformer',
         'dataset_name': 'ffhq',
         'latent_space_dim': 512,
