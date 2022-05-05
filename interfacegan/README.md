@@ -5,6 +5,34 @@ Credit to GitHub user genforce and associated contributors for this work. The or
 https://github.com/genforce/interfacegan. We have modified various scripts and added the `test_boundary.py` script for
 our project.
 
+### Instructions on how to run:
+
+We have implemented interfacegan for two models, the base pSp model and the StyleGAN2 with attention model. The pipeline
+broadly follows these steps:
+
+1. Generate a large amount of samples (~10000) from your model
+2. Train a model to estimate the target attribute. For our experiments, our target attribute is age
+3. Fit a hyperplane which provides a normal direction in which to interpolate in order to maximize change of target
+   attribute
+4. Use the given normal vector to perform interpolation of age.
+
+We give specific instructions for each model type below. Commands should be run from the base directory (i.e., one level
+above this directory).
+
+1. Base pSp. This will output example interpolation images to the `interfacegan/interp/base_psp` directory.
+    1. `cd interfacegan && python generate_data.py -m psp_stylegan2_ffhq -o data/base_psp -n 10000 && cd ..`
+    2. `cd age-estimation-pytorch && python demo.py --img_dir ../interfacegan/data/base_psp --output_dir ./psp_base_scores.npy && cd ..`
+    3. `cd interfacegan && python train_boundary.py -o boundaries/base_psp_age -c data/base_psp/z.npy -s ../age-estimation-pytorch/psp_base_scores.npy && cd ..`
+    4. `cd interfacegan && python test_boundary.py -m psp_stylegan2_ffhq -o interp/base_psp && cd ..`
+
+2. StyleGAN2 with attention. This will output example interpolation images to the `interfacegan/interp/stylegan2_attention` directory.
+    1. `cd interfacegan && python generate_data.py -m stylegan_celebahq -o data/stylegan_celebahq -n 10000 && cd ..`
+    2. `cd age-estimation-pytorch && python demo.py --img_dir ../interfacegan/data/stylegan_celebahq --output_dir ./stylegan_celebahq_scores.npy && cd ..`
+    3. `cd interfacegan && python train_boundary.py -o boundaries/stylegan_celebahq -c data/base_psp/z.npy -s ../age-estimation-pytorch/stylegan_celebahq_scores.npy && cd ..`
+    4. `cd interfacegan && python test_boundary.py -m stylegan_celebahq -o interp/stylegan_celebahq && cd ..`
+
+
+## Original README
 ![Python 3.7](https://img.shields.io/badge/python-3.7-green.svg?style=plastic)
 ![pytorch 1.1.0](https://img.shields.io/badge/pytorch-1.1.0-green.svg?style=plastic)
 ![TensorFlow 1.12.2](https://img.shields.io/badge/tensorflow-1.12.2-green.svg?style=plastic)

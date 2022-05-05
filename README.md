@@ -2,8 +2,9 @@
 Diana Arguijo, Shashank Manjunath, Frank Pacini, Zhenghang Yin  
 `{dma25, manjuns, fgpacini, johnyin}@bu.edu`  
 
-Code for ReStyle from: `https://github.com/yuval-alaluf/restyle-encoder`.  
-Code for InterFaceGAN based on `https://github.com/genforce/interfacegan`.
+Code for encoders based on: `https://github.com/yuval-alaluf/restyle-encoder`.  
+Code for InterFaceGAN based on `https://github.com/genforce/interfacegan`.  
+Code for age estimation based on `https://github.com/yu4u/age-estimation-pytorch`.
 
 
 ![image](./imgs/gan_inversion_img.png)
@@ -26,3 +27,12 @@ the latent space of another GAN model. In this work, we aim to leverage existing
 such as StyleGAN, and pixel2Style2pixel (pSp) modified with attention mechanisms in order to improve GAN inversion
 performance. Following these methods, for training we will use the FFHQ  dataset, which contains 70,000 high-quality
 1024x1024 images of human faces.
+
+## Instructions
+
+For instructions on how to train encoders, please see the `restyle_encoder` directory. For instructions on how to run
+the InterFaceGAN face editing system for age, please see the `interfacegan` directory.
+
+## References
+
+[1] W. Xia et al.. GAN inversion: A survey. arXiv preprint arXiv:2101.05278, 2021.
