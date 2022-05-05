@@ -27,8 +27,8 @@ def get_args():
                         help="Margin around detected face for age-gender estimation")
     parser.add_argument("--img_dir", type=str, default=None,
                         help="Target image directory; if set, images in image_dir are used instead of webcam")
-    parser.add_argument("--output_dir", type=str, default=None,
-                        help="Output directory to which resulting images will be stored if set")
+    parser.add_argument("--output_npy", type=str, default=None,
+                        help="Output numpy file to which resulting scores will be stored if set")
     parser.add_argument("opts", default=[], nargs=argparse.REMAINDER,
                         help="Modify config options using the command-line")
     args = parser.parse_args()
@@ -88,13 +88,6 @@ def main():
         cfg.merge_from_list(args.opts)
 
     cfg.freeze()
-
-    if args.output_dir is not None:
-        if args.img_dir is None:
-            raise ValueError("=> --img_dir argument is required if --output_dir is used")
-
-        output_dir = Path(args.output_dir)
-        output_dir.mkdir(parents=True, exist_ok=True)
 
     # create model
     print("=> creating model '{}'".format(cfg.MODEL.ARCH))
@@ -166,25 +159,10 @@ def main():
             elif len(detected) > 1:
                 print(f"No face found in {name}!")
 
-                # draw results
-                #  for i, d in enumerate(detected):
-                #      label = "{}".format(int(predicted_ages[i]))
-                #      draw_label(img, (d.left(), d.top()), label)
             output_arr.append(predicted_ages)
 
-            #  if idx > 150:
-            #      break
-
-        np.save("./psp_stylegan2_ffhq_face_scores.npy", np.asarray(output_arr))
-            #  if args.output_dir is not None:
-            #      output_path = output_dir.joinpath(name)
-            #      cv2.imwrite(str(output_path), img)
-            #  else:
-            #      cv2.imshow("result", img)
-            #      key = cv2.waitKey(-1) if img_dir else cv2.waitKey(30)
-            #
-            #      if key == 27:  # ESC
-            #          break
+        if args.output_npy is not None:
+            np.save(args.output_npy, np.asarray(output_arr))
 
 
 if __name__ == '__main__':
