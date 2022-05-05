@@ -6,7 +6,7 @@ Code for ReStyle from: `https://github.com/yuval-alaluf/restyle-encoder`.
 Code for InterFaceGAN based on `https://github.com/genforce/interfacegan`.
 
 
-![image](./images/gan_inversion_img.png)
+![image](./imags/gan_inversion_img.png)
 **Figure 1:** *GAN Inversion [1]. Models take in a target image, and search the latent space for a latent encoding which
 produces an image most similar to the target image. The latent encoding is then manipulated to add new features to the
 image.*
