@@ -235,6 +235,11 @@ class ModulatedConv2d(nn.Module):
         style = self.modulation(style).view(batch, 1, in_channel, 1, 1)
         weight = self.scale * self.weight * style
 
+        # # Pre-normalize inputs to avoid FP16 overflow.
+        # if input.dtype == torch.float16 and self.demodulate:
+        #     weight = weight / weight.norm(float('inf'), dim=[1,2,3], keepdim=True) # max_Ikk
+        #     style = style / style.norm(float('inf'), dim=1, keepdim=True) # max_I
+
         if self.demodulate:
             demod = torch.rsqrt(weight.pow(2).sum([2, 3, 4]) + 1e-8)
             weight = weight * demod.view(batch, self.out_channel, 1, 1, 1)
@@ -367,7 +372,7 @@ class Generator(nn.Module):
             n_mlp,
             channel_multiplier=2,
             blur_kernel=[1, 3, 3, 1],
-            lr_mlp=0.01,
+            lr_mlp=0.01
     ):
         super().__init__()
 

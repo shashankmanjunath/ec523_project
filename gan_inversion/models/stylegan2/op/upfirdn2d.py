@@ -85,6 +85,8 @@ class UpFirDn2dBackward(Function):
 class UpFirDn2d(Function):
     @staticmethod
     def forward(ctx, input, kernel, up, down, pad):
+        if input.dtype != kernel.dtype:
+            input = input.to(kernel.dtype)
         up_x, up_y = up
         down_x, down_y = down
         pad_x0, pad_x1, pad_y0, pad_y1 = pad
