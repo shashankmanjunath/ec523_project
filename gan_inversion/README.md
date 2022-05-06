@@ -134,7 +134,6 @@ Run python scripts/loss_evaluation.py with the same arguments that would be used
 | &boxvr;&nbsp; scripts | Folder with running scripts for training, inference, and metric computations
 | &boxvr;&nbsp; training | Folder with main training logic and Ranger implementation from [lessw2020](https://github.com/lessw2020/Ranger-Deep-Learning-Optimizer)
 | &boxvr;&nbsp; utils | Folder with various utility functions
-| <img width=300> | <img>
 
 
 ## Credits
