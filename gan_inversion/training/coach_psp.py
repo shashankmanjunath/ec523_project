@@ -32,6 +32,7 @@ class Coach:
 		self.device = self.opts.device  # TODO: Allow multiple GPU? currently using CUDA_VISIBLE_DEVICES
 
 		# Initialize network
+		# Use Gansformer- or StyleGAN2-based pSp according to use_gansformer option
 		self.net = pSpGansformer(self.opts) if self.opts.use_gansformer else pSp(self.opts)
 		self.net = self.net.to(self.device)
 
@@ -72,7 +73,6 @@ class Coach:
 		# Initialize logger
 		self.log_dir = os.path.join(opts.exp_dir, 'logs')
 		os.makedirs(self.log_dir, exist_ok=True)
-		# self.logger = SummaryWriter(log_dir=log_dir)
 
 		# create and add current timestamp to console output file
 		self.initConsoleOutput()
@@ -166,6 +166,9 @@ class Coach:
 		return loss_dict
 
 	def evaluate(self):
+	"""
+	Added to support quick loss evaluation
+	"""
 		self.net.eval()
 		agg_loss_dict = []
 		for batch_idx, batch in tqdm(enumerate(self.test_dataloader)):
@@ -277,9 +280,6 @@ class Coach:
 			timestamp = str(datetime.now())
 			file.write(timestamp)
 
-	# def log_metrics(self, metrics_dict, prefix):
-	# 	for key, value in metrics_dict.items():
-	# 		self.logger.add_scalar(f'{prefix}/{key}', value, self.global_step)
 
 	def print_metrics(self, metrics_dict, prefix):
 		with open(self.log_dir + "/metric_output.txt", 'a') as file:

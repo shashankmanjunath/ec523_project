@@ -1,3 +1,6 @@
+"""
+Attention implementation modified from GANformer.
+"""
 import numpy as np
 import torch
 import math
@@ -28,10 +31,6 @@ def format_memory(w, channels_last):
     if channels_last:
         return w.to(memory_format = torch.channels_last)
     return w
-
-# Return a nearest neighbors upsampling kernel
-def nearest_neighbors_kernel(device, factor = 2):
-    return upfirdn2d.setup_filter([1] * factor, device = device)
 
 # Convert a torch.nn.Parameter to the necessary dtype and apply gain, to be used within 'forward'
 def get_param(param, dtype, gain, reorder = False):
@@ -66,14 +65,6 @@ def get_weight(shape, gain = 1, use_wscale = True, lrmul = 1, channels_last = Fa
 def get_bias(num_channels, bias_init = 0, lrmul = 1):
     b = torch.nn.Parameter(torch.full([num_channels], np.float32(bias_init)))
     return b, lrmul
-
-# Return the global component from the latent variable (that globally modulate all the image features)
-def get_global(ws): 
-    return ws[:, -1]
-
-# Return the local components from the latent variable (that interact with the image through spatial attention)
-def get_components(ws): 
-    return ws[:, :-1]    
 
 # Fully-connected layer act(x@w + b)
 @persistence.persistent_class
@@ -199,21 +190,6 @@ def get_sinusoidal_encoding(size, dim, num = 2):
     return emb
 
 # 2d positional encoding of dimension 'dim' in a range of resolutions from 2x2 up to 'max_res x max_res'
-#
-# pos_type: supports several types of embedding schemes:
-# - sinus: (see "Attention is all you need")
-# - linear: where each position gets a value of [-1, 1] * trainable_vector, in each spatial
-#   direction based on its location.
-# - trainable: where an embedding of position [w,h] is [emb_w, emb_h] (independent parts in
-#   each spatial direction)
-# - trainable2d: where an embedding of position [w,h] is emb_{w,h} (a different embedding for
-#   each position)
-#
-# dir_num: Each embedding consists of 'dir_num' parts, with each path measuring positional similarity
-# along another direction, uniformly spanning the 2d space.
-#
-# shared: True for using same embeddings for all directions / parts
-# init: uniform or normal distribution for trainable embeddings initialization
 def get_positional_encoding(
         res, 
         pos_dim,                # Positional encoding dimension
@@ -244,7 +220,7 @@ def get_positional_encoding(
     emb = misc.crop_tensor(emb, crop_ratio)
     return emb, params
 
-############################################# Transformer #############################################
+############################################# Attention Layer #########################################
 # -----------------------------------------------------------------------------------------------------
 
 # Transpose tensor to scores
@@ -264,17 +240,6 @@ def compute_probs(scores, dp_func):
         probs = dropout(probs, dp_func)
         probs = dropout(probs, dp_func, shape)
     return probs
-
-# Compute relative weights of different 'from' elements for each 'to' centroid.
-# Namely, compute assignments of 'from' elements to 'to' elements, by normalizing the
-# attention distribution over the rows, to obtain the weight contribution of each
-# 'from' element to the 'to' centroid.
-# Returns [batch_size, num_heads, to_len, from_len] for each element in 'to'
-# the relative weights of assigned 'from' elements (their weighted sum is the respective centroid)
-def compute_assignments(att_probs):
-    centroid_assignments = (att_probs / (att_probs.sum(dim = -2, keepdim = True) + 1e-8))
-    centroid_assignments = centroid_assignments.permute(0, 1, 3, 2) # [B, N, T, F]
-    return centroid_assignments
 
 # (Optional, only used when --ltnt-gate, --img-gate)
 #
@@ -319,13 +284,7 @@ class TransformerLayer(torch.nn.Module):
             num_heads           = 1,                # Number of attention heads
             attention_dropout   = 0.12,             # Attention dropout rate
             integration         = "add",            # Feature integration type: additive, multiplicative or both
-            norm                = None,             # Feature normalization type (optional): instance, batch or layer
-
-            # k-means options (optional, duplex)
-            kmeans              = False,            # Track and update image-to-latents assignment centroids, used in the duplex attention
-            kmeans_iters        = 1,                # Number of K-means iterations per transformer layer
-            iterative           = False,            # Carry over attention assignments across transformer layers of different resolutions
-                                                    # If True, centroids are carried from layer to layer            
+            norm                = None,             # Feature normalization type (optional): instance, batch or layer         
     ):
 
         super().__init__()
@@ -345,10 +304,7 @@ class TransformerLayer(torch.nn.Module):
         self.norm = norm
         self.integration = integration        
         
-        self.parametric = not iterative
         self.centroid_dim = 2 * self.size_head
-        self.kmeans = kmeans
-        self.kmeans_iters = kmeans_iters
 
         # Query, Key and Value mappings
         self.to_queries = FullyConnectedLayer(from_dim, dim)
@@ -366,14 +322,6 @@ class TransformerLayer(torch.nn.Module):
         # Features Integration
         control_dim = (2 * self.dim) if self.integration == "both" else self.dim 
         self.modulation = FullyConnectedLayer(self.dim, control_dim)
-
-        # Centroids
-        if self.kmeans:
-            self.att_weight = torch.nn.Parameter(torch.ones(num_heads, 1, self.centroid_dim))
-            if self.parametric:
-                self.centroids = torch.nn.Parameter(torch.randn([1, num_heads, to_len, self.centroid_dim]))
-            else:
-                self.queries2centroids = FullyConnectedLayer(dim, dim * num_heads)
 
     # Validate transformer input shape for from/to_tensor and reshape to 2d
     def process_input(self, t, t_pos, name):
@@ -422,89 +370,12 @@ class TransformerLayer(torch.nn.Module):
 
         return tensor
 
-    #### K-means (as part of Duplex Attention)
-    # Basically, given the attention scores between 'from' elements to 'to' elements, compute
-    # the 'to' centroids of the inferred assignments relations, as in the k-means algorithm.
-    #
-    # (Intuitively, given that the bed region will get assigned to one latent, and the chair region
-    # will get assigned to another latent, we will compute the centroid/mean of that region and use
-    # it as a representative of that region/object).
-    # 
-    # Given queries (function of the 'from' elements) and the centroid_assignemnts
-    # between 'from' and 'to' elements, compute the centroid/mean queries.
-    #
-    # Some of the code here meant to be backward compatible with the pretrained networks
-    # and may improve in further versions of the repository.
-    def compute_centroids(self, _queries, queries, to_from, hw_shape):
-        # We use [_queries, queries - _queries] for backward compatibility with the pretrained models
-        from_elements = torch.cat([_queries, queries - _queries], dim = -1)
-        from_elements = transpose_for_scores(from_elements, self.num_heads, self.from_len, self.centroid_dim) # [B, N, F, H]
-        hw_shape = [int(s / 2) for s in hw_shape]
-        # to_from represent centroid_assignments of 'from' elements to 'to' elements
-        # [batch_size, num_head, to_len, from_len]
-        if to_from is not None:
-            # upsample centroid_assignments from the prior generator layer
-            # (where image grid dimensions were x2 smaller)
-            if to_from.shape[-2] < self.to_len:
-                # s = int(math.sqrt(to_from.shape[-2]))
-                to_from = upfirdn2d.upsample2d(to_from.reshape(-1, *hw_shape, self.from_len).permute(0, 3, 1, 2), 
-                    f = nearest_neighbors_kernel(queries.device))
-                to_from = to_from.permute(0, 2, 3, 1).reshape(-1, self.num_heads, self.to_len, self.from_len)
-
-            if to_from.shape[-1] < self.from_len:
-                # s = int(math.sqrt(to_from.shape[-1]))
-                to_from = upfirdn2d.upsample2d(to_from.reshape(-1, self.to_len, *hw_shape), 
-                    f = nearest_neighbors_kernel(queries.device))
-                to_from = to_from.reshape(-1, self.num_heads, self.to_len, self.from_len)
-
-            # Given:
-            # 1. Centroid assignments of 'from' elements to 'to' centroid
-            # 2. 'from' elements (queries)
-            # Compute the 'to' respective centroids
-            to_centroids = to_from.matmul(from_elements)
-
-        # Centroids initialization
-        if to_from is None or self.parametric:
-            if self.parametric:
-                to_centroids = self.centroids.tile([from_elements.shape[0], 1, 1, 1])
-            else:
-                to_centroids = self.queries2centroids(queries)
-                to_centroids = transpose_for_scores(to_centroids, self.num_heads, self.to_len, self.centroid_dim)
-
-        return from_elements, to_centroids
-
     # Transformer (multi-head attention) function originated from the Google-BERT repository.
     # https://github.com/google-research/bert/blob/master/modeling.py#L558
-    #
-    # We adopt their from/to notation:
-    # from_tensor: [batch_size, from_len, dim] a list of 'from_len' elements
-    # to_tensor: [batch_size, to_len, dim] a list of 'to_len' elements
-    #
-    # Each element in 'from_tensor' attends to elements from 'to_tensor',
-    # Then we compute a weighted sum over the 'to_tensor' elements, and use it to update
-    # the elements at 'from_tensor' (through additive/multiplicative integration).
-    #
-    # Overall it means that information flows in the direction to->from, or that the 'to'
-    # modulates the 'from'. For instance, if from=image, and to=latents, then the latents
-    # will control the image features. If from = to then this implements self-attention.
-    #
-    # We first project 'from_tensor' into a 'query', and 'to_tensor' into 'key' and 'value'.
-    # Then, the query and key tensors are dot-producted and softmaxed to obtain
-    # attention distribution over the to_tensor elements. The values are then
-    # interpolated (weighted-summed) using this distribution, to get 'context'.
-    # The context is used to modulate the bias/gain of the 'from_tensor' (depends on 'intervention').
-    # Notation: B - batch_size, F - from_len, T - to_len, N - num_heads, H - head_size
-    # Other arguments:
-    # - att_vars: K-means variables carried over from layer to layer (only when --kmeans)
-    # - att_mask: Attention mask to block from/to elements [batch_size, from_len, to_len]
-    def forward(self, from_tensor, to_tensor, from_pos, to_pos, 
-            att_vars = None, att_mask = None, hw_shape = None, dp=True, modify=True):
+    def forward(self, from_tensor, to_tensor, from_pos, to_pos, hw_shape = None, dp=True, modify=True):
         # Validate input shapes and map them to 2d
         from_tensor, from_pos, from_shape = self.process_input(from_tensor, from_pos, "from")
         to_tensor,   to_pos,   to_shape   = self.process_input(to_tensor, to_pos, "to")
-
-        att_vars = att_vars or {}
-        to_from = att_vars.get("centroid_assignments")
 
         # Compute queries, keys and values
         queries = self.to_queries(from_tensor)
@@ -518,9 +389,6 @@ class TransformerLayer(torch.nn.Module):
         if to_pos is not None:
             keys = keys + self.to_pos_map(to_pos)
 
-        if self.kmeans:
-            from_elements, to_centroids = self.compute_centroids(_queries, queries, to_from, hw_shape)
-
         # Reshape queries, keys and values, and then compute att_scores
         values = transpose_for_scores(values,  self.num_heads, self.to_len,   self.size_head)  # [B, N, T, H]
         queries = transpose_for_scores(queries, self.num_heads, self.from_len, self.size_head)  # [B, N, F, H]
@@ -530,41 +398,19 @@ class TransformerLayer(torch.nn.Module):
         att_probs = None
 
         with torch.cuda.amp.autocast(enabled=False):
-            for i in range(self.kmeans_iters):
-                if self.kmeans:
-                    if i > 0:
-                        # Compute relative weights of different 'from' elements for each 'to' centroid
-                        to_from = compute_assignments(att_probs)
-                        # Given:
-                        # 1. Centroid assignments of 'from' elements to 'to' centroid
-                        # 2. 'from' elements (queries)
-                        # Compute the 'to' respective centroids
-                        to_centroids = to_from.matmul(from_elements)
+            # Scale attention scores given head size (see BERT)
+            att_scores = att_scores / math.sqrt(float(self.size_head))
+            # Turn attention logits to probabilities (softmax + dropout)
+            att_probs = compute_probs(att_scores, self.att_dp if dp else None)
 
-                    # Compute attention scores based on dot products between
-                    # 'from' queries and the 'to' centroids.
-                    att_scores = (from_elements * self.att_weight).matmul(to_centroids.permute(0, 1, 3, 2))
-
-                # Scale attention scores given head size (see BERT)
-                att_scores = att_scores / math.sqrt(float(self.size_head))
-                # (optional, not used by default)
-                # Mask attention logits using att_mask (to mask some components)
-                if att_mask is not None:
-                    att_scores = logits_mask(att_scores, att_mask.unsqueeze(1))
-                # Turn attention logits to probabilities (softmax + dropout)
-                att_probs = compute_probs(att_scores, self.att_dp if dp else None)
         # Gate attention values for the from/to elements
         att_probs = self.to_gate_attention(att_probs, to_tensor, to_pos)
         att_probs = self.from_gate_attention(att_probs, from_tensor, from_pos)
 
-        # Compute relative weights of different 'from' elements for each 'to' centroid
-        if self.kmeans:
-            to_from = compute_assignments(att_probs)
-
         # Compute weighted-sum of the values using the attention distribution
-        control = att_probs.matmul(values)      # [B, N, F, H]
-        control = control.permute(0, 2, 1, 3)   # [B, F, N, H]
-        control = control.reshape(-1, self.dim) # [B*F, N*H]
+        control = att_probs.matmul(values)
+        control = control.permute(0, 2, 1, 3)
+        control = control.reshape(-1, self.dim)
         # This newly computed information will control the bias/gain of the new from_tensor
         if modify:
             from_tensor = self.integrate(from_tensor, self.from_len, control)
@@ -576,4 +422,5 @@ class TransformerLayer(torch.nn.Module):
         if hw_shape is not None:
             att_probs = att_probs.reshape(-1, *hw_shape, self.to_len).permute(0, 3, 1, 2) # [NCHW]
 
-        return from_tensor, att_probs, {"centroid_assignments": to_from}
+        return from_tensor, att_probs, None
+        

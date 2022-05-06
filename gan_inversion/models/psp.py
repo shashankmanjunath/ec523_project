@@ -22,6 +22,8 @@ class pSp(nn.Module):
         self.n_styles = int(math.log(self.opts.output_size, 2)) * 2 - 2
         # Define architecture
         self.encoder = self.set_encoder()
+
+        # StyleGAN 1 and 2 supported for comparison
         if self.opts.use_stylegan:
             self.decoder = StyleGANGenerator(self.opts.output_size, blur_filter=[1,2,1], truncation_psi=0)
         else:
@@ -46,7 +48,7 @@ class pSp(nn.Module):
 
     def load_weights(self):
         if self.opts.checkpoint_path is not None:
-            print(f'Loading ReStyle pSp from checkpoint: {self.opts.checkpoint_path}')
+            print(f'Loading pSp from checkpoint: {self.opts.checkpoint_path}')
             ckpt = torch.load(self.opts.checkpoint_path, map_location='cpu')
             self.encoder.load_state_dict(self.__get_keys(ckpt, 'encoder'), strict=False)
             self.decoder.load_state_dict(self.__get_keys(ckpt, 'decoder'), strict=True)
@@ -62,6 +64,8 @@ class pSp(nn.Module):
     def forward(self, x, latent=None, resize=True, latent_mask=None, input_code=False, randomize_noise=True,
                 inject_latent=None, return_att=False, return_latents=False, alpha=None, 
                 average_code=False, input_is_full=False, block_attention=None):
+
+        # Used to view attention maps
         if return_att:
             if not self.opts.use_attention or self.opts.encoder_type != 'GradualStyleEncoder':
                 raise Exception('Attention maps requires use_attention and GradualStyleEncoder')
@@ -79,7 +83,6 @@ class pSp(nn.Module):
                 # first iteration is with respect to the avg latent code
                 codes = codes + self.latent_avg.repeat(codes.shape[0], 1, 1)
         
-
         if latent_mask is not None:
             for i in latent_mask:
                 if inject_latent is not None:
@@ -95,6 +98,7 @@ class pSp(nn.Module):
         else:
             input_is_latent = (not input_code) or (input_is_full)
 
+        # Call StyleGAN1 or StyleGAN2 decoder
         if self.opts.use_stylegan:
             images, result_latent = self.decoder(codes,
                                                 depth=int(np.log2(self.opts.output_size)) - 2,

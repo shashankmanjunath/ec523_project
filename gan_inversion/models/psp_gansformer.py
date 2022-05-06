@@ -13,14 +13,19 @@ from utils.model_utils import RESNET_MAPPING
 
 
 class pSpGansformer(nn.Module):
-
+    """
+    pSp modified to support Gansformer decoder
+    """
     def __init__(self, opts):
         super(pSpGansformer, self).__init__()
         self.set_opts(opts)
+        # One less style than StyleGAN2, and style dimension of 544 instead of 512
         self.n_styles = int(math.log(self.opts.output_size, 2)) * 2 - 1
         self.latent_dim = 544
         # Define architecture
         self.encoder = self.set_encoder()
+        # Style is split into 17 components (k), with 32 dim per component. 
+        # 16 of these modulate the output via attention, and the remainder uses ADAIN as in StyleGAN
         self.decoder = GansformerGenerator(z_dim=512, c_dim=0, w_dim=512, k=17, img_resolution=256, img_channels=3)
         self.face_pool = torch.nn.AdaptiveAvgPool2d((256, 256))
         # Load weights if needed
@@ -79,13 +84,14 @@ class pSpGansformer(nn.Module):
         else:
             input_is_latent = (not input_code) or (input_is_full)
 
+        # Here 'latent' means W+ space
         if input_is_latent:
             out = self.decoder(ws=codes,
-                                    noise_mode = 'const', # 'random' if randomize_noise else 'const',
+                                    noise_mode = 'const',
                                     return_ws=return_latents)
         else:
             out = self.decoder(z=codes,
-                                    noise_mode = 'const', # 'random' if randomize_noise else 'const',
+                                    noise_mode = 'const',
                                     return_ws=return_latents)
         if return_latents:
             images, result_latent = out

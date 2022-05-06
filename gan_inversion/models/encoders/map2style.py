@@ -40,6 +40,10 @@ class GansformerStyleBlock(Module):
         )
 
     def forward(self, x, c=None):
+        """
+        Runs local components of the style through a final attention layer, 
+        which is computed over those components using the context feature map.
+        """
         x = self.convs(x)
 
         x_components, x_global = x[:, :-self.style_dim], x[:, -self.style_dim:] 
@@ -84,6 +88,9 @@ class GradualStyleBlock(Module):
         return x
 
 class AttentionBlock(Module):
+    """
+    Block of attention layers used in StyleGAN2-based model
+    """
     def __init__(self, input_res, style_dim, n_styles):
         super(AttentionBlock, self).__init__()
         self.style_dim = style_dim
@@ -91,6 +98,7 @@ class AttentionBlock(Module):
         transformer_modules = []
         start_channels = 64
         for i in range(5):
+            # context resolutions are 16x16 -> 256x256 in powers of 2
             context_res = int(input_res / (2**(4-i)))
             context_dim = start_channels if i == 4 else start_channels * (2**(3-i))
             transformer_modules.append(
@@ -108,6 +116,10 @@ class AttentionBlock(Module):
         self.transformers  = nn.ModuleList(transformer_modules)
     
     def forward(self, x, contexts, eval=False, block=None):
+        """
+        Run concatenated styles through all attention layers, which computes attention 
+        by comparing each style to each 'pixel' of context feature map.
+        """
         shape = x.shape
         att_maps = []
         for i in range(5):

@@ -10,7 +10,7 @@ from models.encoders.map2style import GradualStyleBlock, GansformerStyleBlock, A
 
 class GradualStyleEncoder(Module):
     """
-    Original encoder architecture from pixel2style2pixel. This classes uses an FPN-based architecture applied over
+    Encoder architecture from pixel2style2pixel with optional attention. This classes uses an FPN-based architecture applied over
     an ResNet IRSE-50 backbone.
     Note this class is designed to be used for the human facial domain.
     """
@@ -50,6 +50,7 @@ class GradualStyleEncoder(Module):
         self.latlayer2 = nn.Conv2d(128, 512, kernel_size=1, stride=1, padding=0)
 
         self.attention = None
+        # use_attention option determines whether to use attention layers in StyleGAN2-based
         if opts.use_attention:
             self.attention = AttentionBlock(input_res, 512, n_styles)
 
@@ -59,6 +60,9 @@ class GradualStyleEncoder(Module):
         return F.interpolate(x, size=(H, W), mode='bilinear', align_corners=True) + y
 
     def forward(self, x, return_att=False, block=None):
+        """
+        Modified to extract feature maps from the ResNet backbone after 5 blocks
+        """
         # bu -> bottom up pathway, td -> top down pathway
         # h -> from tensor in attention, c -> to tensor (context)
         x = self.input_layer(x) # (256, 256)
@@ -94,6 +98,7 @@ class GradualStyleEncoder(Module):
             latents.append(self.styles[j](td1))
         out = torch.stack(latents, dim=1)
 
+        # Send list of styles and feature maps to attention block after map2style blocks
         if self.attention is not None:
             context_features = [res0, res1, res2, res3, res4]
             out, att_maps = self.attention(out, context_features, eval=return_att, block=block)
@@ -104,9 +109,7 @@ class GradualStyleEncoder(Module):
 
 class GansformerStyleEncoder(Module):
     """
-    Original encoder architecture from pixel2style2pixel. This classes uses an FPN-based architecture applied over
-    an ResNet IRSE-50 backbone.
-    Note this class is designed to be used for the human facial domain.
+    Encoder architecture from pixel2style2pixel with attention2style blocks (GansformerStyleBlock) instead of map2style.
     """
     def __init__(self, num_layers, mode='ir', n_styles=18, opts=None):
         super(GansformerStyleEncoder, self).__init__()
