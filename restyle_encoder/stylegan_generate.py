@@ -19,7 +19,7 @@ def run(model, gpus, output_dir, images_num, truncation_psi, ratio):
 
     print("Loading networks...")
     G = StyleGANGenerator(1024, blur_filter=[1,2,1], truncation_psi=0).to(device)
-    G.load_state_dict(torch.load(model), strict=True)
+    G.load_state_dict(torch.load(model)["state_dict"], strict=True)
 
     print("Generate and save images...")
     os.makedirs(output_dir, exist_ok = True)                              # Make output directory

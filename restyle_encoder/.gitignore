@@ -3,3 +3,4 @@ datasets/CelebA-HQ/
 pretrained_models/
 experiment/
 __pycache__/
+test.py
