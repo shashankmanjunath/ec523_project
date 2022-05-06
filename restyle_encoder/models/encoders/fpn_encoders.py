@@ -49,6 +49,7 @@ class GradualStyleEncoder(Module):
         self.latlayer1 = nn.Conv2d(256, 512, kernel_size=1, stride=1, padding=0)
         self.latlayer2 = nn.Conv2d(128, 512, kernel_size=1, stride=1, padding=0)
 
+        self.attention = None
         if opts.use_attention:
             self.attention = AttentionBlock(input_res, 512, n_styles)
 
@@ -57,7 +58,7 @@ class GradualStyleEncoder(Module):
         _, _, H, W = y.size()
         return F.interpolate(x, size=(H, W), mode='bilinear', align_corners=True) + y
 
-    def forward(self, x):
+    def forward(self, x, return_att=False, block=None):
         # bu -> bottom up pathway, td -> top down pathway
         # h -> from tensor in attention, c -> to tensor (context)
         x = self.input_layer(x) # (256, 256)
@@ -95,8 +96,10 @@ class GradualStyleEncoder(Module):
 
         if self.attention is not None:
             context_features = [res0, res1, res2, res3, res4]
-            out = self.attention(out, context_features)
+            out, att_maps = self.attention(out, context_features, eval=return_att, block=block)
 
+        if return_att:
+            return out, att_maps
         return out
 
 class GansformerStyleEncoder(Module):
@@ -132,17 +135,17 @@ class GansformerStyleEncoder(Module):
         self.middle_ind = 7
         for i in range(self.style_count):
             if i < self.coarse_ind:
-                style = GansformerStyleBlock(style_dim, style_dim, 16, attention=True, context_res=16, context_dim=512)
+                style = GansformerStyleBlock(style_dim, style_dim, 16, context_res=16, context_dim=512)
             elif i < 5:
-                style = GansformerStyleBlock(style_dim, style_dim, 32, attention=True, context_res=16, context_dim=512)
+                style = GansformerStyleBlock(style_dim, style_dim, 32, context_res=16, context_dim=512)
             elif i < self.middle_ind:
-                style = GansformerStyleBlock(style_dim, style_dim, 32, attention=True, context_res=32, context_dim=256)
+                style = GansformerStyleBlock(style_dim, style_dim, 32, context_res=32, context_dim=256)
             elif i < 9:
-                style = GansformerStyleBlock(style_dim, style_dim, 64, attention=True, context_res=64, context_dim=128)
+                style = GansformerStyleBlock(style_dim, style_dim, 64, context_res=64, context_dim=128)
             elif i < 11:
-                style = GansformerStyleBlock(style_dim, style_dim, 64, attention=True, context_res=128, context_dim=64)
+                style = GansformerStyleBlock(style_dim, style_dim, 64, context_res=128, context_dim=64)
             else:
-                style = GansformerStyleBlock(style_dim, style_dim, 64, attention=True, context_res=256, context_dim=64)
+                style = GansformerStyleBlock(style_dim, style_dim, 64, context_res=256, context_dim=64)
             self.styles.append(style)
         self.latlayer0 = nn.Conv2d(512, style_dim, kernel_size=1, stride=1, padding=0)
         self.latlayer1 = nn.Conv2d(256, style_dim, kernel_size=1, stride=1, padding=0)
@@ -152,7 +155,7 @@ class GansformerStyleEncoder(Module):
         _, _, H, W = y.size()
         return F.interpolate(x, size=(H, W), mode='bilinear', align_corners=True) + y
 
-    def forward(self, x):
+    def forward(self, x, return_att=False):
         # bu -> bottom up pathway, td -> top down pathway
         # h -> from tensor in attention, c -> to tensor (context)
         x = self.input_layer(x) # (256, 256)
@@ -170,31 +173,40 @@ class GansformerStyleEncoder(Module):
             elif i == 23: # (16, 16)
                 res4 = bu3 = x
 
+        att_maps = []
         # bu3: 16 x 16 x 512 -> 16 x 16 x 544 (map)
         td3 = self.latlayer0(bu3)
         for j in range(self.coarse_ind): # 1-3
-            latents.append(self.styles[j](td3, res4))
+            style, att_map = self.styles[j](td3, res4)
+            latents.append(style)
+            att_maps.append(att_map)
 
         # bu2: 32 x 32 x 256 -> 32 x 32 x 544 (map)
         # td3: 16 x 16 x 544 -> 32 x 32 x 544 (upsample)
         td2 = self._upsample_add(td3, self.latlayer1(bu2))
         for j in range(self.coarse_ind, self.middle_ind):
             if j < 5: # 4-5
-                latents.append(self.styles[j](td2, res4))
+                style, att_map = self.styles[j](td2, res4)
             else: # 6-7
-                latents.append(self.styles[j](td2, res3))
+                style, att_map = self.styles[j](td2, res3)
+            latents.append(style)
+            att_maps.append(att_map)
 
         # bu1: 64 x 64 x 128 -> 64 x 64 x 544 (map)
         # td2: 32 x 32 x 544 -> 64 x 64 x 544 (upsample)
         td1 = self._upsample_add(td2, self.latlayer2(bu1))
         for j in range(self.middle_ind, self.style_count):
             if j < 9: # 8-9
-                latents.append(self.styles[j](td1, res2))
+                style, att_map = self.styles[j](td1, res2)
             elif j < 11: # 10-11
-                latents.append(self.styles[j](td1, res1))
+                style, att_map = self.styles[j](td1, res1)
             else: # 12-15
-                latents.append(self.styles[j](td1, res0))
+                style, att_map = self.styles[j](td1, res0)
+            latents.append(style)
+            att_maps.append(att_map)
         out = torch.stack(latents, dim=1)
+        if return_att:
+            return out, att_maps
         return out
 
 class ResNetGradualStyleEncoder(Module):

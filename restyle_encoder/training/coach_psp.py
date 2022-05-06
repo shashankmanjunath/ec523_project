@@ -20,6 +20,8 @@ from models.psp import pSp
 from models.psp_gansformer import pSpGansformer
 from training.ranger import Ranger
 
+from tqdm import tqdm
+
 
 class Coach:
 	def __init__(self, opts):
@@ -146,9 +148,10 @@ class Coach:
 			agg_loss_dict.append(cur_loss_dict)
 
 			# Logging related
-			# self.parse_and_log_images(id_logs, x, y, y_hat,
-			# 						  title='images/test/faces',
-			# 						  subscript='{:04d}'.format(batch_idx))
+			if batch_idx % self.opts.image_interval == 0:
+				self.parse_and_log_images(id_logs, x, y, y_hat,
+										title='images/test/faces',
+										subscript='{:04d}'.format(batch_idx))
 
 			# For first step just do sanity test on small amount of data
 			if self.global_step == 0 and batch_idx >= 4:
@@ -161,6 +164,33 @@ class Coach:
 
 		self.net.train()
 		return loss_dict
+
+	def evaluate(self):
+		self.net.eval()
+		agg_loss_dict = []
+		for batch_idx, batch in tqdm(enumerate(self.test_dataloader)):
+			x, y = batch
+
+			with torch.no_grad():
+				x, y = x.to(self.device).float(), y.to(self.device).float()
+				y_hat, latent = self.net.forward(x, return_latents=True)
+				loss, cur_loss_dict, id_logs = self.calc_loss(x, y, y_hat, latent)
+			agg_loss_dict.append(cur_loss_dict)
+			if batch_idx == 0:
+				loss_dict = train_utils.aggregate_loss_dict(agg_loss_dict)
+				# self.log_metrics(loss_dict, prefix='test')
+				self.print_metrics(loss_dict, prefix='test')
+
+		loss_dict = train_utils.aggregate_loss_dict(agg_loss_dict)
+		self.print_metrics(loss_dict, prefix='test')
+
+	def inference(self, imgs):
+		self.net.eval()
+		x, y = imgs, imgs
+		with torch.no_grad():
+			x, y = x.to(self.device).float(), y.to(self.device).float()
+			y_hat, latent = self.net.forward(x, return_latents=True)
+		return y_hat
 
 	def checkpoint_me(self, loss_dict, is_best):
 		save_name = 'best_model.pt' if is_best else f'iteration_{self.global_step}.pt'

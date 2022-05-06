@@ -47,7 +47,7 @@ class GansformerStyleBlock(Module):
         x_components = x_components.reshape(-1, self.style_len, self.style_dim)
         c = c.reshape(c.shape[0], c.shape[1], -1).permute(0, 2, 1)
 
-        x_components, _, _ = self.transformer(
+        x_components, att_map, _ = self.transformer(
             from_tensor = x_components, to_tensor = c, 
             from_pos = None,   to_pos = self.grid_pos,
             hw_shape = (4, 4)
@@ -58,7 +58,7 @@ class GansformerStyleBlock(Module):
         
         x = x.view(-1, self.out_c)
         x = self.linear(x)
-        return x
+        return x, att_map
 
 class GradualStyleBlock(Module):
     def __init__(self, in_c, out_c, spatial):
@@ -107,13 +107,16 @@ class AttentionBlock(Module):
             
         self.transformers  = nn.ModuleList(transformer_modules)
     
-    def forward(self, x, contexts):
+    def forward(self, x, contexts, eval=False, block=None):
         shape = x.shape
+        att_maps = []
         for i in range(5):
             c = contexts[i]
             c = c.reshape(c.shape[0], c.shape[1], -1).permute(0, 2, 1)
-            x, _, _ = self.transformers[i](
+            x, att_map, _ = self.transformers[i](
                 from_tensor = x, to_tensor = c, 
-                from_pos = None,   to_pos = getattr(self, "grid_pos"+str(i))
+                from_pos = None,   to_pos = getattr(self, "grid_pos"+str(i)),
+                dp=not eval, modify=True if block is None else (i != block)
             )
-        return x
+            att_maps.append(att_map)
+        return x, att_maps

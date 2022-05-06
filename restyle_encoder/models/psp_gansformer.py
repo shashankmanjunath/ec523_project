@@ -46,7 +46,10 @@ class pSpGansformer(nn.Module):
             self.latent_avg = None
 
     def forward(self, x, latent=None, resize=True, latent_mask=None, input_code=False, randomize_noise=True,
-                inject_latent=None, return_latents=False, alpha=None, average_code=False, input_is_full=False):
+                inject_latent=None, return_att=False, return_latents=False, alpha=None, average_code=False, input_is_full=False):
+        if return_att:
+            _, att_maps = self.encoder(x, return_att=True)
+            return att_maps 
         if input_code:
             codes = x
         else:

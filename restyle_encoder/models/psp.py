@@ -59,11 +59,17 @@ class pSp(nn.Module):
             self.__load_latent_avg(decoder_ckpt, repeat=self.n_styles)
 
     def forward(self, x, latent=None, resize=True, latent_mask=None, input_code=False, randomize_noise=True,
-                inject_latent=None, return_latents=False, alpha=None, average_code=False, input_is_full=False):
-        if input_code:
+                inject_latent=None, return_att=False, return_latents=False, alpha=None, 
+                average_code=False, input_is_full=False, block_attention=None):
+        if return_att:
+            if not self.opts.use_attention or self.opts.encoder_type != 'GradualStyleEncoder':
+                raise Exception('Attention maps requires use_attention and GradualStyleEncoder')
+            _, att_maps = self.encoder(x, return_att=True)
+            return att_maps
+        elif input_code:
             codes = x
         else:
-            codes = self.encoder(x)
+            codes = self.encoder(x, block=block_attention)
             # residual step
             if x.shape[1] == 6 and latent is not None:
                 # learn error with respect to previous iteration
@@ -71,6 +77,7 @@ class pSp(nn.Module):
             else:
                 # first iteration is with respect to the avg latent code
                 codes = codes + self.latent_avg.repeat(codes.shape[0], 1, 1)
+        
 
         if latent_mask is not None:
             for i in latent_mask:

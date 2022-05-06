@@ -23,13 +23,23 @@ def run(model, gpus, output_dir, images_num, truncation_psi, ratio):
     print("Generate and save images...")
     os.makedirs(output_dir, exist_ok = True)                              # Make output directory
 
+    pattern = "{}/sample_{{:06d}}-{{}}.png".format(output_dir)             # Output images pattern
     for i in trange(images_num):
         # z = torch.randn([1, *G.input_shape[1:]], device = device)         # Sample latent vector
         w_avg = G.mean_latent(int(1e5), device).detach()
-        dw = torch.randn([1, 17, 15, 32], device = device) / 10
-        imgs = G(ws=w_avg+dw, truncation_psi = truncation_psi)[0].cpu().numpy()     # Generate an image
-        pattern = "{}/sample_{{:06d}}.png".format(output_dir)             # Output images pattern
-        img = crop(misc.to_pil(imgs[0]), ratio).save(pattern.format(i))   # Save the image
+        dw = torch.randn([1, 17, 15, 32], device = device) / 2
+
+        imgs = G(ws=w_avg, truncation_psi = truncation_psi)[0].cpu().numpy()
+        img = crop(misc.to_pil(imgs[0]), ratio).save(pattern.format(i,0))   # Save the image
+
+        imgs = G(ws=torch.cat((w_avg[:, :-1]+dw[:, :-1], w_avg[:,-1:]), dim=1), truncation_psi = truncation_psi)[0].cpu().numpy()
+        img = crop(misc.to_pil(imgs[0]), ratio).save(pattern.format(i,1))   # Save the image
+
+        imgs = G(ws=torch.cat((w_avg[:, :-1], w_avg[:,-1:]+dw[:, -1:]), dim=1), truncation_psi = truncation_psi)[0].cpu().numpy()
+        img = crop(misc.to_pil(imgs[0]), ratio).save(pattern.format(i,2))   # Save the image    # Generate an image
+
+        imgs = G(ws=torch.cat((w_avg[:, :-1]+dw[:, :-1], w_avg[:,-1:]+dw[:, -1:]), dim=1), truncation_psi = truncation_psi)[0].cpu().numpy()
+        img = crop(misc.to_pil(imgs[0]), ratio).save(pattern.format(i,3))   # Save the image
 
 #----------------------------------------------------------------------------
 

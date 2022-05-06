@@ -260,8 +260,9 @@ def compute_probs(scores, dp_func):
     shape = [int(d) for d in probs.shape]
     shape[-2] = 1
     # Dropout over random cells and over random full rows (randomly don't use a 'to' element)
-    probs = dropout(probs, dp_func)
-    probs = dropout(probs, dp_func, shape)
+    if dp_func is not None:
+        probs = dropout(probs, dp_func)
+        probs = dropout(probs, dp_func, shape)
     return probs
 
 # Compute relative weights of different 'from' elements for each 'to' centroid.
@@ -497,7 +498,7 @@ class TransformerLayer(torch.nn.Module):
     # - att_vars: K-means variables carried over from layer to layer (only when --kmeans)
     # - att_mask: Attention mask to block from/to elements [batch_size, from_len, to_len]
     def forward(self, from_tensor, to_tensor, from_pos, to_pos, 
-            att_vars = None, att_mask = None, hw_shape = None):
+            att_vars = None, att_mask = None, hw_shape = None, dp=True, modify=True):
         # Validate input shapes and map them to 2d
         from_tensor, from_pos, from_shape = self.process_input(from_tensor, from_pos, "from")
         to_tensor,   to_pos,   to_shape   = self.process_input(to_tensor, to_pos, "to")
@@ -551,7 +552,7 @@ class TransformerLayer(torch.nn.Module):
                 if att_mask is not None:
                     att_scores = logits_mask(att_scores, att_mask.unsqueeze(1))
                 # Turn attention logits to probabilities (softmax + dropout)
-                att_probs = compute_probs(att_scores, self.att_dp)
+                att_probs = compute_probs(att_scores, self.att_dp if dp else None)
         # Gate attention values for the from/to elements
         att_probs = self.to_gate_attention(att_probs, to_tensor, to_pos)
         att_probs = self.from_gate_attention(att_probs, from_tensor, from_pos)
@@ -565,7 +566,8 @@ class TransformerLayer(torch.nn.Module):
         control = control.permute(0, 2, 1, 3)   # [B, F, N, H]
         control = control.reshape(-1, self.dim) # [B*F, N*H]
         # This newly computed information will control the bias/gain of the new from_tensor
-        from_tensor = self.integrate(from_tensor, self.from_len, control)
+        if modify:
+            from_tensor = self.integrate(from_tensor, self.from_len, control)
 
         # Reshape from_tensor to its original shape (if 3 dimensions)
         if len(from_shape) > 2:
