@@ -31,6 +31,7 @@ class pSp(nn.Module):
         self.load_weights()
 
     def set_encoder(self):
+        # only GradualStyleEncoder supports attention
         if self.opts.encoder_type == 'GradualStyleEncoder':
             encoder = fpn_encoders.GradualStyleEncoder(50, 'ir_se', self.n_styles, self.opts)
         elif self.opts.encoder_type == 'ResNetGradualStyleEncoder':
