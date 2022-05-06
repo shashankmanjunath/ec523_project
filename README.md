@@ -30,7 +30,7 @@ performance. Following these methods, for training we will use the FFHQ  dataset
 
 ## Instructions
 
-For instructions on how to train encoders, please see the `restyle_encoder` directory. For instructions on how to run
+For instructions on how to train encoders, please see the `gan_inversion` directory. For instructions on how to run
 the InterFaceGAN face editing system for age, please see the `interfacegan` directory.
 
 ## References

@@ -1,5 +1,5 @@
 # python3.7
-"""Contains the generator class of StyleGAN.
+"""Contains the generator class of pSp
 
 Basically, this class is derived from the `BaseGenerator` class defined in
 `base_generator.py`.
@@ -11,7 +11,6 @@ import numpy as np
 import torch
 
 from . import model_settings
-#  from .stylegan_generator_model import StyleGANGeneratorModel
 from models.psp import pSp
 from .base_generator import BaseGenerator
 
